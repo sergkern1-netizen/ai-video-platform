@@ -16,6 +16,8 @@ router = APIRouter()
 _redis = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
 _queue = Queue(connection=_redis)
 
+_JOB_TIMEOUT_BY_FORMAT = {"short": 600, "long": 2400}
+
 
 class CreateVideoRequest(BaseModel):
     topic: str
@@ -29,7 +31,7 @@ def create_video(request: CreateVideoRequest):
     _queue.enqueue(
         run_pipeline,
         PipelineInput(topic=request.topic, format=request.format, job_id=video_id),
-        job_timeout=600,
+        job_timeout=_JOB_TIMEOUT_BY_FORMAT[request.format],
     )
     return {"id": video_id}
 
