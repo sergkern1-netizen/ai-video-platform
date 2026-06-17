@@ -4,35 +4,56 @@ from dataclasses import dataclass
 from openai import OpenAI
 
 @dataclass
+class Scene:
+    text: str
+    keywords: list[str]
+    duration_sec: int
+
+@dataclass
 class Script:
     title: str
+    scenes: list[Scene]
     body: str
-    keywords: list[str]
+    mood: str
     duration_sec: int
 
 _SHORT_PROMPT = """Write a YouTube Shorts / TikTok video script about: "{topic}"
 
 Format: vertical short video, under 60 seconds
-Target: ~120 words
+Target: ~120 words total, broken into scenes
+
+Rules:
+- The FIRST scene must be a strong attention-grabbing hook (1-2 sentences) that makes viewers want to keep watching.
+- Each scene should be 3-5 seconds long and represent one visual beat / idea.
+- Keep pacing fast and energetic.
 
 Respond with JSON only — no markdown, no explanation:
 {{
   "title": "video title (max 60 chars)",
-  "body": "the full narration text",
-  "keywords": ["word1", "word2", "word3"],
+  "mood": "one of: upbeat, calm, dramatic, corporate",
+  "scenes": [
+    {{"text": "narration text for this scene", "keywords": ["visual1", "visual2"], "duration_sec": 4}}
+  ],
   "duration_sec": 50
 }}"""
 
 _LONG_PROMPT = """Write a YouTube video script about: "{topic}"
 
 Format: horizontal YouTube video, 10 minutes
-Target: ~1500 words
+Target: ~1500 words total, broken into scenes
+
+Rules:
+- Start with a calm, welcoming introduction scene (not an abrupt hook).
+- Each scene should be 8-15 seconds long and cover one sub-topic or idea.
+- Keep a steady, explanatory pace suitable for long-form viewing.
 
 Respond with JSON only — no markdown, no explanation:
 {{
   "title": "video title (max 70 chars)",
-  "body": "the full narration text",
-  "keywords": ["word1", "word2", "word3"],
+  "mood": "one of: upbeat, calm, dramatic, corporate",
+  "scenes": [
+    {{"text": "narration text for this scene", "keywords": ["visual1", "visual2"], "duration_sec": 10}}
+  ],
   "duration_sec": 600
 }}"""
 
@@ -52,10 +73,20 @@ def generate_script(topic: str, format: str, max_retries: int = 3) -> Script:
         raw = response.choices[0].message.content.strip()
         try:
             data = json.loads(raw)
+            scenes = [
+                Scene(
+                    text=s["text"],
+                    keywords=s["keywords"],
+                    duration_sec=s["duration_sec"],
+                )
+                for s in data["scenes"]
+            ]
+            body = " ".join(scene.text for scene in scenes)
             return Script(
                 title=data["title"],
-                body=data["body"],
-                keywords=data["keywords"],
+                scenes=scenes,
+                body=body,
+                mood=data.get("mood", "corporate"),
                 duration_sec=data["duration_sec"],
             )
         except (json.JSONDecodeError, KeyError):

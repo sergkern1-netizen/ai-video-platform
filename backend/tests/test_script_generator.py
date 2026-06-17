@@ -1,6 +1,6 @@
 import json
 from unittest.mock import patch, MagicMock
-from backend.pipeline.script_generator import generate_script, Script
+from backend.pipeline.script_generator import generate_script, Script, Scene
 
 def _mock_openai(content: str):
     mock = MagicMock()
@@ -10,8 +10,14 @@ def _mock_openai(content: str):
 def test_generate_script_short_returns_script_dataclass():
     payload = json.dumps({
         "title": "How to Learn Python Fast",
-        "body": "Python is one of the most popular programming languages today.",
-        "keywords": ["python", "programming", "learn"],
+        "mood": "upbeat",
+        "scenes": [
+            {
+                "text": "Python is one of the most popular programming languages today.",
+                "keywords": ["python", "code"],
+                "duration_sec": 5,
+            },
+        ],
         "duration_sec": 50,
     })
     with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
@@ -20,15 +26,20 @@ def test_generate_script_short_returns_script_dataclass():
 
     assert isinstance(script, Script)
     assert script.title == "How to Learn Python Fast"
+    assert script.mood == "upbeat"
+    assert len(script.scenes) == 1
+    assert isinstance(script.scenes[0], Scene)
+    assert script.scenes[0].keywords == ["python", "code"]
     assert "Python" in script.body
-    assert "python" in script.keywords
     assert script.duration_sec == 50
 
 def test_generate_script_long_requests_600_seconds():
     payload = json.dumps({
         "title": "The Full History of Rome",
-        "body": "Rome was not built in a day. " * 100,
-        "keywords": ["rome", "history", "ancient"],
+        "mood": "dramatic",
+        "scenes": [
+            {"text": "Rome was not built in a day.", "keywords": ["rome", "history"], "duration_sec": 10},
+        ],
         "duration_sec": 600,
     })
     captured = {}
@@ -48,8 +59,8 @@ def test_generate_script_retries_on_invalid_json():
     bad_response = _mock_openai("not valid json {{")
     good_payload = json.dumps({
         "title": "Retry Works",
-        "body": "Body text here.",
-        "keywords": ["retry"],
+        "mood": "calm",
+        "scenes": [{"text": "Body text here.", "keywords": ["retry"], "duration_sec": 5}],
         "duration_sec": 50,
     })
     good_response = _mock_openai(good_payload)
@@ -61,3 +72,31 @@ def test_generate_script_retries_on_invalid_json():
         script = generate_script("test topic", "short")
 
     assert script.title == "Retry Works"
+
+def test_generate_script_defaults_mood_when_missing():
+    payload = json.dumps({
+        "title": "No Mood Field",
+        "scenes": [{"text": "Some text.", "keywords": ["x"], "duration_sec": 5}],
+        "duration_sec": 50,
+    })
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.return_value = _mock_openai(payload)
+        script = generate_script("topic", "short")
+
+    assert script.mood == "corporate"
+
+def test_generate_script_body_joins_scene_texts():
+    payload = json.dumps({
+        "title": "Multi Scene",
+        "mood": "calm",
+        "scenes": [
+            {"text": "First scene text.", "keywords": ["a"], "duration_sec": 4},
+            {"text": "Second scene text.", "keywords": ["b"], "duration_sec": 4},
+        ],
+        "duration_sec": 8,
+    })
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.return_value = _mock_openai(payload)
+        script = generate_script("topic", "short")
+
+    assert script.body == "First scene text. Second scene text."
