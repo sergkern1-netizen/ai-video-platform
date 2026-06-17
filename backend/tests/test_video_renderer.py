@@ -9,6 +9,7 @@ from backend.pipeline.video_renderer import (
     _crop_to_fill,
     _ken_burns_zoom_factor,
     _group_words_into_windows,
+    _concatenate_with_crossfade,
 )
 
 def _make_inputs(clips=None, scenes=None):
@@ -150,3 +151,16 @@ def test_group_words_into_windows_splits_by_window_size():
 
 def test_group_words_into_windows_empty_input():
     assert _group_words_into_windows([], window_size=6) == []
+
+def test_concatenate_with_crossfade_matches_expected_duration_formula():
+    from moviepy.editor import ColorClip
+    from backend.pipeline.video_renderer import _CROSSFADE_SEC
+
+    n = 3
+    per_clip_duration = 3.0
+    clips = [ColorClip(size=(10, 10), color=[0, 0, 0], duration=per_clip_duration) for _ in range(n)]
+
+    result = _concatenate_with_crossfade(clips)
+
+    expected = n * (per_clip_duration - _CROSSFADE_SEC)
+    assert result.duration == pytest.approx(expected)

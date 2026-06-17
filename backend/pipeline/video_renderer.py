@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import (
@@ -28,6 +29,11 @@ _FONT_PATH = os.path.join(
     os.path.dirname(__file__), "..", "assets", "fonts", "DejaVuSans-Bold.ttf"
 )
 _BG_COLOR = [20, 20, 40]
+
+
+@lru_cache(maxsize=4)
+def _get_font(size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(_FONT_PATH, size)
 
 
 def render_video(
@@ -63,7 +69,9 @@ def _build_background(script: Script, assets: Assets, size: tuple, duration: flo
         return ColorClip(size=size, color=_BG_COLOR, duration=duration)
 
     total_planned = sum(s.duration_sec for s in script.scenes) or duration
-    scale = duration / total_planned
+    scene_count = len(script.scenes)
+    crossfade_compensation = _CROSSFADE_SEC * scene_count if scene_count > 1 else 0
+    scale = (duration + crossfade_compensation) / total_planned
 
     scene_clips = []
     for scene, clip_info in zip(script.scenes, assets.video_clips):
@@ -108,7 +116,7 @@ def _crop_to_fill(clip, size: tuple):
 
 
 def _ken_burns_zoom_factor(t: float, duration: float, max_zoom: float = _KEN_BURNS_ZOOM) -> float:
-    if duration <= 0:
+    if not duration or duration <= 0:
         return 1.0
     progress = min(max(t / duration, 0.0), 1.0)
     return 1 + (max_zoom - 1) * progress
@@ -164,7 +172,7 @@ def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> Image
     font_size = 64 if w == 1080 else 46
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(_FONT_PATH, font_size)
+    font = _get_font(font_size)
 
     words = [entry["text"] for entry in window]
     spacing = 14
