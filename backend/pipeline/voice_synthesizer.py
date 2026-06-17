@@ -25,24 +25,38 @@ def synthesize_voice(script: Script, job_id: str, audio_dir: str = "temp") -> Vo
     duration = clip.duration
     clip.close()
 
-    word_timings = _estimate_timings(script.body, duration)
+    word_timings = _whisper_word_timings(client, audio_path)
+    if word_timings is None:
+        word_timings = _estimate_timings(script.body, duration)
+
     return VoiceOutput(audio_path=audio_path, word_timings=word_timings)
+
+def _whisper_word_timings(client: OpenAI, audio_path: str) -> list[dict] | None:
+    try:
+        with open(audio_path, "rb") as f:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="verbose_json",
+                timestamp_granularities=["word"],
+            )
+        return [
+            {"text": w["word"], "start": w["start"], "end": w["end"]}
+            for w in transcript.words
+        ]
+    except Exception:
+        return None
 
 def _estimate_timings(text: str, total_duration: float) -> list[dict]:
     words = text.split()
-    chunk_size = 8
-    chunks = [
-        " ".join(words[i : i + chunk_size])
-        for i in range(0, len(words), chunk_size)
-    ]
-    if not chunks:
+    if not words:
         return []
-    time_per_chunk = total_duration / len(chunks)
+    time_per_word = total_duration / len(words)
     return [
         {
-            "text": chunk,
-            "start": round(i * time_per_chunk, 2),
-            "end": round((i + 1) * time_per_chunk, 2),
+            "text": word,
+            "start": round(i * time_per_word, 2),
+            "end": round((i + 1) * time_per_word, 2),
         }
-        for i, chunk in enumerate(chunks)
+        for i, word in enumerate(words)
     ]
