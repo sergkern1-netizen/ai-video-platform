@@ -1,31 +1,49 @@
 import os
 from dataclasses import dataclass, field
+from typing import Literal
 import httpx
+from backend.pipeline.script_generator import Scene
 
 PEXELS_API_URL = "https://api.pexels.com/videos/search"
 
+_ORIENTATION_BY_FORMAT = {"short": "portrait", "long": "landscape"}
+
 @dataclass
 class Assets:
-    video_clips: list[dict] = field(default_factory=list)  # [{path, duration_sec}]
+    video_clips: list = field(default_factory=list)  # list[dict | None], aligned with scenes
 
-def fetch_assets(keywords: list[str], duration_sec: int, clip_dir: str = "temp") -> Assets:
-    query = " ".join(keywords[:2])
+def fetch_assets(scenes: list[Scene], format: Literal["short", "long"], clip_dir: str = "temp") -> Assets:
+    orientation = _ORIENTATION_BY_FORMAT.get(format, "landscape")
+    clips = []
+    last_successful = None
+
+    for scene in scenes:
+        clip = _fetch_scene_clip(scene, orientation, clip_dir)
+        if clip is None:
+            clip = last_successful
+        else:
+            last_successful = clip
+        clips.append(clip)
+
+    return Assets(video_clips=clips)
+
+def _fetch_scene_clip(scene: Scene, orientation: str, clip_dir: str):
+    query = " ".join(scene.keywords[:2])
     try:
         resp = httpx.get(
             PEXELS_API_URL,
             headers={"Authorization": os.environ["PEXELS_API_KEY"]},
-            params={"query": query, "per_page": 5, "min_duration": 5},
+            params={"query": query, "per_page": 5, "min_duration": 5, "orientation": orientation},
             timeout=15,
         )
         videos = resp.json().get("videos", [])
     except Exception:
-        return Assets()
+        return None
 
     if not videos:
-        return Assets()
+        return None
 
     os.makedirs(clip_dir, exist_ok=True)
-    clips = []
     for video in videos:
         files = sorted(
             video["video_files"],
@@ -36,11 +54,11 @@ def fetch_assets(keywords: list[str], duration_sec: int, clip_dir: str = "temp")
         clip_path = os.path.join(clip_dir, f"{video['id']}.mp4")
         try:
             _download_clip(best["link"], clip_path)
-            clips.append({"path": clip_path, "duration_sec": video["duration"]})
+            return {"path": clip_path, "duration_sec": video["duration"]}
         except Exception:
             continue
 
-    return Assets(video_clips=clips)
+    return None
 
 def _download_clip(url: str, path: str) -> None:
     with httpx.Client(timeout=60, follow_redirects=True) as client:
