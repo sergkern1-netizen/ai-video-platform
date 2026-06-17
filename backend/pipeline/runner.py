@@ -25,7 +25,7 @@ def run_pipeline(pipeline_input: PipelineInput) -> None:
         with ThreadPoolExecutor(max_workers=2) as executor:
             voice_future = executor.submit(synthesize_voice, script, job_id)
             assets_future = executor.submit(
-                fetch_assets, script.keywords, script.duration_sec
+                fetch_assets, script.scenes, pipeline_input.format
             )
             voice = voice_future.result()
             assets = assets_future.result()
