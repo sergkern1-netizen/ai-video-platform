@@ -29,6 +29,7 @@ def create_video(request: CreateVideoRequest):
     _queue.enqueue(
         run_pipeline,
         PipelineInput(topic=request.topic, format=request.format, job_id=video_id),
+        job_timeout=600,
     )
     return {"id": video_id}
 

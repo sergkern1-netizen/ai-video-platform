@@ -3,3 +3,4 @@ temp/
 .env
 __pycache__/
 .pytest_cache/
+db.sqlite3
