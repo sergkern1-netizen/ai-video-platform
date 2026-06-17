@@ -10,7 +10,7 @@ _ORIENTATION_BY_FORMAT = {"short": "portrait", "long": "landscape"}
 
 @dataclass
 class Assets:
-    video_clips: list = field(default_factory=list)  # list[dict | None], aligned with scenes
+    video_clips: list[dict | None] = field(default_factory=list)  # aligned with scenes
 
 def fetch_assets(scenes: list[Scene], format: Literal["short", "long"], clip_dir: str = "temp") -> Assets:
     orientation = _ORIENTATION_BY_FORMAT.get(format, "landscape")
@@ -27,7 +27,7 @@ def fetch_assets(scenes: list[Scene], format: Literal["short", "long"], clip_dir
 
     return Assets(video_clips=clips)
 
-def _fetch_scene_clip(scene: Scene, orientation: str, clip_dir: str):
+def _fetch_scene_clip(scene: Scene, orientation: str, clip_dir: str) -> dict | None:
     query = " ".join(scene.keywords[:2])
     try:
         resp = httpx.get(
