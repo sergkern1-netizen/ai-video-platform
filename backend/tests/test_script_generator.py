@@ -34,11 +34,12 @@ def test_generate_script_short_returns_script_dataclass():
     assert script.duration_sec == 50
 
 def test_generate_script_long_requests_600_seconds():
+    long_text = " ".join(["word"] * 1400)  # above the 1350-word continuation threshold
     payload = json.dumps({
         "title": "The Full History of Rome",
         "mood": "dramatic",
         "scenes": [
-            {"text": "Rome was not built in a day.", "keywords": ["rome", "history"], "duration_sec": 10},
+            {"text": long_text, "keywords": ["rome", "history"], "duration_sec": 600},
         ],
         "duration_sec": 600,
     })
@@ -54,6 +55,7 @@ def test_generate_script_long_requests_600_seconds():
     assert script.duration_sec == 600
     user_msg = captured["messages"][1]["content"]
     assert "10 minutes" in user_msg or "600" in user_msg
+    MockClient.return_value.chat.completions.create.assert_called_once()
 
 def test_generate_script_retries_on_invalid_json():
     bad_response = _mock_openai("not valid json {{")
@@ -98,6 +100,91 @@ def test_generate_script_strips_markdown_code_fence():
         script = generate_script("topic", "short")
 
     assert script.title == "Fenced Response"
+
+def test_generate_script_long_continues_when_under_word_threshold():
+    first_text = " ".join(["alpha"] * 1300)  # below the 1350-word threshold
+    first_payload = json.dumps({
+        "title": "Long Topic",
+        "mood": "calm",
+        "scenes": [{"text": first_text, "keywords": ["a"], "duration_sec": 600}],
+        "duration_sec": 600,
+    })
+    continuation_text = " ".join(["beta"] * 100)  # pushes combined total over the threshold
+    continuation_payload = json.dumps({
+        "scenes": [{"text": continuation_text, "keywords": ["b"], "duration_sec": 20}],
+    })
+
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.side_effect = [
+            _mock_openai(first_payload),
+            _mock_openai(continuation_payload),
+        ]
+        script = generate_script("topic", "long")
+
+    assert MockClient.return_value.chat.completions.create.call_count == 2
+    assert script.body.startswith("alpha")
+    assert "beta" in script.body
+    assert len(script.scenes) == 2
+
+def test_generate_script_long_gives_up_after_max_continuations():
+    first_text = " ".join(["alpha"] * 10)  # far below threshold
+    first_payload = json.dumps({
+        "title": "Long Topic",
+        "mood": "calm",
+        "scenes": [{"text": first_text, "keywords": ["a"], "duration_sec": 600}],
+        "duration_sec": 600,
+    })
+    continuation_text = " ".join(["beta"] * 10)  # still far below threshold each time
+    continuation_payload = json.dumps({
+        "scenes": [{"text": continuation_text, "keywords": ["b"], "duration_sec": 20}],
+    })
+
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.side_effect = [
+            _mock_openai(first_payload),
+            _mock_openai(continuation_payload),
+            _mock_openai(continuation_payload),
+            _mock_openai(continuation_payload),
+        ]
+        script = generate_script("topic", "long")
+
+    assert MockClient.return_value.chat.completions.create.call_count == 4  # 1 initial + 3 continuations (max)
+    assert len(script.scenes) == 4
+    assert script.duration_sec == 600
+
+def test_generate_script_long_returns_accumulated_when_continuation_json_invalid():
+    first_text = " ".join(["alpha"] * 10)
+    first_payload = json.dumps({
+        "title": "Long Topic",
+        "mood": "calm",
+        "scenes": [{"text": first_text, "keywords": ["a"], "duration_sec": 600}],
+        "duration_sec": 600,
+    })
+    bad_continuation = _mock_openai("not valid json {{")
+
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.side_effect = [
+            _mock_openai(first_payload),
+            bad_continuation, bad_continuation, bad_continuation,  # exhausts max_retries=3 for the continuation
+        ]
+        script = generate_script("topic", "long")
+
+    assert len(script.scenes) == 1
+    assert script.body == first_text
+
+def test_generate_script_short_never_continues():
+    payload = json.dumps({
+        "title": "Short Topic",
+        "mood": "calm",
+        "scenes": [{"text": "Just a few words.", "keywords": ["x"], "duration_sec": 5}],
+        "duration_sec": 50,
+    })
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.return_value = _mock_openai(payload)
+        script = generate_script("topic", "short")
+
+    MockClient.return_value.chat.completions.create.assert_called_once()
+    assert script.duration_sec == 50
 
 def test_generate_script_body_joins_scene_texts():
     payload = json.dumps({
