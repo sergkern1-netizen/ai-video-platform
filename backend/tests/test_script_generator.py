@@ -85,6 +85,20 @@ def test_generate_script_defaults_mood_when_missing():
 
     assert script.mood == "corporate"
 
+def test_generate_script_strips_markdown_code_fence():
+    payload = json.dumps({
+        "title": "Fenced Response",
+        "mood": "calm",
+        "scenes": [{"text": "Some text.", "keywords": ["x"], "duration_sec": 5}],
+        "duration_sec": 50,
+    })
+    fenced = f"```json\n{payload}\n```"
+    with patch("backend.pipeline.script_generator.OpenAI") as MockClient:
+        MockClient.return_value.chat.completions.create.return_value = _mock_openai(fenced)
+        script = generate_script("topic", "short")
+
+    assert script.title == "Fenced Response"
+
 def test_generate_script_body_joins_scene_texts():
     payload = json.dumps({
         "title": "Multi Scene",

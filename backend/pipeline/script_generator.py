@@ -59,13 +59,23 @@ Respond with JSON only — no markdown, no explanation:
   "duration_sec": 600
 }}"""
 
+_MODEL_BY_FORMAT = {"short": "gpt-4o-mini", "long": "gpt-4o"}
+
+def _strip_markdown_code_fence(raw: str) -> str:
+    if raw.startswith("```"):
+        raw = raw[raw.index("\n") + 1:]
+        if raw.endswith("```"):
+            raw = raw[:-3]
+    return raw.strip()
+
 def generate_script(topic: str, format: str, max_retries: int = 3) -> Script:
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     prompt = _SHORT_PROMPT if format == "short" else _LONG_PROMPT
+    model = _MODEL_BY_FORMAT.get(format, "gpt-4o-mini")
 
     for attempt in range(max_retries):
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model,
             messages=[
                 {"role": "system", "content": "You are a professional video script writer. Always respond with valid JSON only."},
                 {"role": "user", "content": prompt.format(topic=topic)},
@@ -74,7 +84,7 @@ def generate_script(topic: str, format: str, max_retries: int = 3) -> Script:
         )
         raw = response.choices[0].message.content.strip()
         try:
-            data = json.loads(raw)
+            data = json.loads(_strip_markdown_code_fence(raw))
             scenes = [
                 Scene(
                     text=s["text"],
