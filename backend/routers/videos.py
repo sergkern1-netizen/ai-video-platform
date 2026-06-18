@@ -16,7 +16,7 @@ router = APIRouter()
 _redis = Redis.from_url(os.environ.get("REDIS_URL", "redis://localhost:6379"))
 _queue = Queue(connection=_redis)
 
-_JOB_TIMEOUT_BY_FORMAT = {"short": 600, "long": 2400}
+_JOB_TIMEOUT_BY_FORMAT = {"short": 600, "long": 3600}
 
 
 class CreateVideoRequest(BaseModel):
