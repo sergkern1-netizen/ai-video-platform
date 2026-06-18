@@ -4,3 +4,5 @@ temp/
 __pycache__/
 .pytest_cache/
 db.sqlite3
+logs/
+bot_state.db
