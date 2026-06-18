@@ -45,6 +45,9 @@ async def cmd_start(message: Message):
 
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message, state_ctx: FSMContext):
+    if not _is_allowed(message.from_user.id):
+        await message.answer("Доступ запрещён.")
+        return
     await state_ctx.clear()
     await message.answer("Отменено.")
 
