@@ -12,7 +12,8 @@ from aiogram.types import (
     Message,
 )
 
-from bot import client, state
+from bot import client
+from bot import state as bot_state
 from bot.config import get_allowed_user_ids, get_public_base_url
 
 logger = logging.getLogger(__name__)
@@ -44,31 +45,31 @@ async def cmd_start(message: Message):
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state_ctx: FSMContext):
+async def cmd_cancel(message: Message, state: FSMContext):
     if not _is_allowed(message.from_user.id):
         await message.answer("Доступ запрещён.")
         return
-    await state_ctx.clear()
+    await state.clear()
     await message.answer("Отменено.")
 
 
 @router.message(Command("generate"))
-async def cmd_generate(message: Message, state_ctx: FSMContext):
+async def cmd_generate(message: Message, state: FSMContext):
     if not _is_allowed(message.from_user.id):
         await message.answer("Доступ запрещён.")
         return
-    await state_ctx.set_state(GenerateStates.waiting_topic)
+    await state.set_state(GenerateStates.waiting_topic)
     await message.answer("Какая тема видео?")
 
 
 @router.message(GenerateStates.waiting_topic)
-async def on_topic(message: Message, state_ctx: FSMContext):
+async def on_topic(message: Message, state: FSMContext):
     topic = (message.text or "").strip()
     if not topic:
         await message.answer("Тема не может быть пустой. Напишите тему видео.")
         return
-    await state_ctx.update_data(topic=topic)
-    await state_ctx.set_state(GenerateStates.waiting_format)
+    await state.update_data(topic=topic)
+    await state.set_state(GenerateStates.waiting_format)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -81,11 +82,11 @@ async def on_topic(message: Message, state_ctx: FSMContext):
 
 
 @router.callback_query(GenerateStates.waiting_format, F.data.startswith("format:"))
-async def on_format(callback: CallbackQuery, state_ctx: FSMContext, bot: Bot):
+async def on_format(callback: CallbackQuery, state: FSMContext, bot: Bot):
     fmt = callback.data.split(":", 1)[1]
-    data = await state_ctx.get_data()
+    data = await state.get_data()
     topic = data["topic"]
-    await state_ctx.clear()
+    await state.clear()
     await callback.message.edit_reply_markup(reply_markup=None)
 
     try:
@@ -97,7 +98,7 @@ async def on_format(callback: CallbackQuery, state_ctx: FSMContext, bot: Bot):
         return
 
     video_id = result["id"]
-    state.add_request(video_id, callback.from_user.id, topic, fmt)
+    bot_state.add_request(video_id, callback.from_user.id, topic, fmt)
     await callback.message.answer(
         "Генерация запущена (~1-5 мин для short / дольше для long). "
         "Сообщу, когда будет готово."
@@ -135,7 +136,7 @@ async def cmd_history(message: Message):
         await message.answer("Доступ запрещён.")
         return
 
-    requests = state.get_history(message.from_user.id)
+    requests = bot_state.get_history(message.from_user.id)
     if not requests:
         await message.answer("История пуста.")
         return
