@@ -162,5 +162,5 @@ def test_concatenate_with_crossfade_matches_expected_duration_formula():
 
     result = _concatenate_with_crossfade(clips)
 
-    expected = n * (per_clip_duration - _CROSSFADE_SEC)
+    expected = n * per_clip_duration - (n - 1) * _CROSSFADE_SEC
     assert result.duration == pytest.approx(expected)

@@ -70,7 +70,7 @@ def _build_background(script: Script, assets: Assets, size: tuple, duration: flo
 
     total_planned = sum(s.duration_sec for s in script.scenes) or duration
     scene_count = len(script.scenes)
-    crossfade_compensation = _CROSSFADE_SEC * scene_count if scene_count > 1 else 0
+    crossfade_compensation = _CROSSFADE_SEC * (scene_count - 1) if scene_count > 1 else 0
     scale = (duration + crossfade_compensation) / total_planned
 
     scene_clips = []
@@ -140,11 +140,30 @@ def _concatenate_with_crossfade(clips: list):
     if len(clips) == 1:
         return clips[0]
 
-    faded = [clips[0]]
-    for clip in clips[1:]:
-        faded.append(clip.crossfadein(_CROSSFADE_SEC))
+    # moviepy's crossfadein() attaches a fade mask to a clip's ENTIRE duration,
+    # not just the transition window, which forces every frame of that clip
+    # through CompositeVideoClip's expensive masked alpha-blend path instead of
+    # the cheap copy-only path. Building short, separate transition clips that
+    # cover only the actual _CROSSFADE_SEC overlap keeps that expensive path
+    # confined to a handful of frames per transition instead of whole scenes.
+    segments = []
+    for i, clip in enumerate(clips):
+        start_trim = _CROSSFADE_SEC if i > 0 else 0
+        end_trim = _CROSSFADE_SEC if i < len(clips) - 1 else 0
+        segments.append(clip.subclip(start_trim, clip.duration - end_trim))
 
-    return concatenate_videoclips(faded, padding=-_CROSSFADE_SEC, method="compose")
+    transitions = []
+    for a, b in zip(clips[:-1], clips[1:]):
+        a_tail = a.subclip(a.duration - _CROSSFADE_SEC, a.duration)
+        b_head = b.subclip(0, _CROSSFADE_SEC).crossfadein(_CROSSFADE_SEC)
+        transitions.append(CompositeVideoClip([a_tail, b_head]))
+
+    ordered = [segments[0]]
+    for transition, segment in zip(transitions, segments[1:]):
+        ordered.append(transition)
+        ordered.append(segment)
+
+    return concatenate_videoclips(ordered, method="chain")
 
 
 def _group_words_into_windows(word_timings: list, window_size: int = _KARAOKE_WINDOW) -> list:
