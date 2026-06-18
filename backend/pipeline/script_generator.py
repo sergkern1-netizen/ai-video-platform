@@ -39,12 +39,14 @@ Respond with JSON only — no markdown, no explanation:
 
 _LONG_PROMPT = """Write a YouTube video script about: "{topic}"
 
-Format: horizontal YouTube video, 10 minutes
-Target: ~1500 words total, broken into scenes
+Format: horizontal YouTube video, exactly 10 minutes of narration (600 seconds)
+Required length: at least 1500 words of narration text across all scenes combined, and at least 45 scenes. This is a STRICT MINIMUM, not a suggestion — a short summary is NOT acceptable for this task.
 
 Rules:
 - Start with a calm, welcoming introduction scene (not an abrupt hook).
-- Each scene should be 8-15 seconds long and cover one sub-topic or idea.
+- Cover the topic in real depth: break it into many distinct sub-topics, examples, stories, or angles — do not just give a brief overview and stop.
+- Each scene should be 8-15 seconds long (roughly 20-35 words of narration) and cover one sub-topic or idea.
+- Keep writing scenes until the combined narration across all scenes reaches the required length. Before finalizing, count the scenes and estimate the total words — if it is under 1500 words or under 45 scenes, keep adding more scenes covering additional angles of the topic.
 - Keep a steady, explanatory pace suitable for long-form viewing.
 
 Respond with JSON only — no markdown, no explanation:
