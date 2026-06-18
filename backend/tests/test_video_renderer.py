@@ -152,6 +152,45 @@ def test_group_words_into_windows_splits_by_window_size():
 def test_group_words_into_windows_empty_input():
     assert _group_words_into_windows([], window_size=6) == []
 
+def test_render_karaoke_frame_crops_to_bounding_box_not_full_frame():
+    from backend.pipeline.video_renderer import _render_karaoke_frame
+
+    window = [
+        {"text": "Hello", "start": 0.0, "end": 0.5},
+        {"text": "world", "start": 0.5, "end": 1.0},
+    ]
+    img, _position = _render_karaoke_frame(window, 0, (1920, 1080))
+
+    assert img.size[0] < 1920
+    assert img.size[1] < 1080
+
+def test_render_karaoke_frame_position_keeps_text_near_bottom():
+    from backend.pipeline.video_renderer import _render_karaoke_frame
+
+    window = [{"text": "Hello", "start": 0.0, "end": 0.5}]
+    img, (x, y) = _render_karaoke_frame(window, 0, (1920, 1080))
+
+    assert y > 1080 * 0.5
+    assert y + img.size[1] <= 1080
+    assert x >= 0
+
+def test_make_karaoke_clips_positions_clip_from_render_karaoke_frame():
+    from PIL import Image
+    from backend.pipeline.video_renderer import _make_karaoke_clips
+
+    word_timings = [{"text": "Hi", "start": 0.0, "end": 0.5}]
+    fake_img = Image.new("RGBA", (100, 50), (0, 0, 0, 0))
+
+    with patch(
+        "backend.pipeline.video_renderer._render_karaoke_frame",
+        return_value=(fake_img, (10, 20)),
+    ):
+        clips = _make_karaoke_clips(word_timings, (1920, 1080))
+
+    assert len(clips) == 1
+    assert clips[0].pos(0) == (10, 20)
+    assert tuple(clips[0].size) == (100, 50)
+
 def test_concatenate_with_crossfade_matches_expected_duration_formula():
     from moviepy.editor import ColorClip
     from backend.pipeline.video_renderer import _CROSSFADE_SEC

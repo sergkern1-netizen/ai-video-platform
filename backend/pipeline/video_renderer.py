@@ -173,6 +173,9 @@ def _group_words_into_windows(word_timings: list, window_size: int = _KARAOKE_WI
     ]
 
 
+_KARAOKE_PAD = 8
+
+
 def _make_karaoke_clips(word_timings: list, size: tuple) -> list:
     clips = []
     for window in _group_words_into_windows(word_timings):
@@ -180,18 +183,26 @@ def _make_karaoke_clips(word_timings: list, size: tuple) -> list:
             clip_duration = word["end"] - word["start"]
             if clip_duration <= 0:
                 continue
-            img = _render_karaoke_frame(window, index, size)
-            clip = ImageClip(np.array(img), duration=clip_duration).set_start(word["start"])
+            img, position = _render_karaoke_frame(window, index, size)
+            clip = (
+                ImageClip(np.array(img), duration=clip_duration)
+                .set_start(word["start"])
+                .set_position(position)
+            )
             clips.append(clip)
     return clips
 
 
-def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> Image.Image:
+def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> tuple:
+    # Cropped to the text's actual bounding box (plus small padding) instead
+    # of a full-frame canvas: MoviePy's compositor does a masked alpha-blend
+    # over the overlay's area on every frame it's shown, so a full 1920x1080
+    # overlay for a few words of text is far more compositing work than needed.
     w, h = size
     font_size = 64 if w == 1080 else 46
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
     font = _get_font(font_size)
+    measure_img = Image.new("RGBA", (1, 1))
+    measure_draw = ImageDraw.Draw(measure_img)
 
     words = [entry["text"] for entry in window]
     spacing = 14
@@ -200,7 +211,7 @@ def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> Image
     lines = [[]]
     line_width = 0
     for idx, word in enumerate(words):
-        bbox = draw.textbbox((0, 0), word, font=font)
+        bbox = measure_draw.textbbox((0, 0), word, font=font)
         word_w = bbox[2] - bbox[0]
         if line_width + word_w + spacing > max_width and lines[-1]:
             lines.append([])
@@ -209,19 +220,30 @@ def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> Image
         line_width += word_w + spacing
 
     line_height = font_size + 16
-    y = h - len(lines) * line_height - 80
+    block_height = len(lines) * line_height
+    y0 = h - block_height - 80
 
+    line_data = []
+    block_width = 0
     for line in lines:
         widths = []
         total_w = 0
         for idx in line:
-            bbox = draw.textbbox((0, 0), words[idx], font=font)
+            bbox = measure_draw.textbbox((0, 0), words[idx], font=font)
             word_w = bbox[2] - bbox[0]
             widths.append(word_w)
             total_w += word_w + spacing
         total_w -= spacing
+        line_data.append((line, widths, total_w))
+        block_width = max(block_width, total_w)
 
-        x = (w - total_w) // 2
+    pad = _KARAOKE_PAD
+    img = Image.new("RGBA", (block_width + pad * 2, block_height + pad * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    y = pad
+    for line, widths, total_w in line_data:
+        x = (block_width - total_w) // 2 + pad
         for idx, word_w in zip(line, widths):
             color = (255, 215, 0, 255) if idx == active_index else (255, 255, 255, 255)
             draw.text((x + 2, y + 2), words[idx], fill=(0, 0, 0, 200), font=font)
@@ -229,4 +251,6 @@ def _render_karaoke_frame(window: list, active_index: int, size: tuple) -> Image
             x += word_w + spacing
         y += line_height
 
-    return img
+    x_offset = (w - block_width) // 2 - pad
+    y_offset = y0 - pad
+    return img, (x_offset, y_offset)
