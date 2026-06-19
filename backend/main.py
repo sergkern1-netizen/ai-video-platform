@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import init_db
 from backend.routers.videos import router as videos_router
+from backend.routers.youtube import router as youtube_router
 
 app = FastAPI(title="AI Video Platform")
 
@@ -21,3 +22,4 @@ def startup():
     init_db()
 
 app.include_router(videos_router, prefix="/videos")
+app.include_router(youtube_router, prefix="/youtube")
