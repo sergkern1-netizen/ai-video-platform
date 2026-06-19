@@ -41,3 +41,70 @@ def test_update_status_to_failed_sets_error():
     video = get_video("vid-4")
     assert video["status"] == "failed"
     assert video["error"] == "OpenAI rate limit"
+
+
+from backend.database import (
+    create_youtube_channel,
+    get_youtube_channel,
+    list_youtube_channels,
+    create_publish,
+    get_publish,
+    update_publish_status,
+)
+
+
+def test_create_youtube_channel_returns_row():
+    channel = create_youtube_channel("UC123", "My Channel", "refresh-abc", 555)
+    assert channel["channel_id"] == "UC123"
+    assert channel["channel_title"] == "My Channel"
+    assert channel["refresh_token"] == "refresh-abc"
+    assert channel["connected_by_user_id"] == 555
+
+
+def test_get_youtube_channel_returns_none_for_unknown():
+    assert get_youtube_channel("nonexistent") is None
+
+
+def test_list_youtube_channels_returns_all():
+    create_youtube_channel("UC1", "Channel One", "tok1", 1)
+    create_youtube_channel("UC2", "Channel Two", "tok2", 2)
+    channels = list_youtube_channels()
+    titles = {c["channel_title"] for c in channels}
+    assert titles == {"Channel One", "Channel Two"}
+
+
+def test_create_publish_returns_pending():
+    publish = create_publish("vid-1", "chan-1", "My Title", "My description")
+    assert publish["video_id"] == "vid-1"
+    assert publish["channel_id"] == "chan-1"
+    assert publish["title"] == "My Title"
+    assert publish["description"] == "My description"
+    assert publish["privacy"] == "unlisted"
+    assert publish["status"] == "pending"
+
+
+def test_get_publish_returns_none_for_unknown():
+    assert get_publish("nonexistent") is None
+
+
+def test_update_publish_status_to_uploading():
+    publish = create_publish("vid-2", "chan-1", "T", "D")
+    update_publish_status(publish["id"], "uploading")
+    assert get_publish(publish["id"])["status"] == "uploading"
+
+
+def test_update_publish_status_to_completed_sets_youtube_video_id():
+    publish = create_publish("vid-3", "chan-1", "T", "D")
+    update_publish_status(publish["id"], "completed", youtube_video_id="yt-xyz")
+    row = get_publish(publish["id"])
+    assert row["status"] == "completed"
+    assert row["youtube_video_id"] == "yt-xyz"
+    assert row["completed_at"] is not None
+
+
+def test_update_publish_status_to_failed_sets_error():
+    publish = create_publish("vid-4", "chan-1", "T", "D")
+    update_publish_status(publish["id"], "failed", error="quota exceeded")
+    row = get_publish(publish["id"])
+    assert row["status"] == "failed"
+    assert row["error"] == "quota exceeded"
